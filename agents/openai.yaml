@@ -1,0 +1,7 @@
+interface:
+  display_name: "Codex 子代理"
+  short_description: "智谱优先，额度或高峰时转用 DeepSeek；主代理负责验收"
+  default_prompt: "使用 $codex-subagent 按任务分派子代理，智谱优先，在高峰时段或服务额度不足时使用 DeepSeek；子代理只探索和编码，由主代理验收。"
+
+policy:
+  allow_implicit_invocation: true
