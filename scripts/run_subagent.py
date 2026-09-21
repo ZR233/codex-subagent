@@ -157,7 +157,8 @@ PROVIDER_FAILURE_PATTERNS = (
         r"|(?<!\w)(?:429)(?!\w)")),
     ("quota_exhausted", re.compile(
         r"(?i)insufficient[ _-]?(?:quota|balance|credits?)|quota exceeded"
-        r"|exceeded your current quota|余额不足|额度不足|配额(?:已)?(?:用尽|耗尽|不足)")),
+        r"|quota exhausted|credits? exhausted|exceeded your current quota"
+        r"|余额不足|额度不足|(?:配额|用量|点数)(?:已)?(?:用尽|耗尽|不足)")),
     ("service_overload", re.compile(
         r"(?i)overloaded(?:_error)?|service unavailable|server busy|bad gateway"
         r"|(?<!\w)(?:502|503|529)(?!\w)|过载|服务繁忙")),
@@ -178,12 +179,12 @@ def parse_args(argv):
                              "提供方回退时第二次重新计时）")
     parser.add_argument("--resume-from", default=None,
                         help="上一轮证据目录（含 status.json）；用于续跑已持久化会话，"
-                             "提供方与 thread_id 沿用上一轮")
+                             "提供方与 thread_id 沿用上一轮；智谱在高峰期拒绝续跑")
     parser.add_argument("--provider", choices=PROVIDER_CHOICES, default=None,
                         help="显式指定提供方，覆盖峰值时段路由；续跑时必须与上一轮一致")
     parser.add_argument("--peak-window", choices=PEAK_WINDOW_MODES, default="auto",
                         help="峰值窗口判定：auto 按 UTC+8 时钟；on 强制视为峰值（deepseek）；"
-                             "off 禁用峰值判定（优先 zai）")
+                             "off 禁用新任务的峰值判定（优先 zai），不影响智谱续跑的高峰拦截")
     return parser.parse_args(argv)
 
 def abort(message):
@@ -1036,6 +1037,10 @@ def run(argv):
         if args.provider is not None and args.provider != provider:
             return abort(f"--provider={args.provider} 与上一轮提供方 {provider} 不一致：续跑必须沿用"
                          f"上一轮提供方（{resume_context['provider_source']}）")
+        if provider == PROVIDER_ZAI and peak_window_active(current_utc_now()):
+            return abort("智谱会话续跑时已进入每日 14:00–18:00（UTC+8）高峰，拒绝续跑；"
+                         "即使指定 --peak-window off 也不能绕过。请主代理先核对已有改动，"
+                         "再指定 --provider deepseek 新开会话，不要传 --resume-from 恢复原会话。")
         peak_active = None
         routing_reason = (f"续跑沿用上一轮提供方 {provider}（{resume_context['provider_source']}）；"
                           "续跑不参与峰值判定与提供方回退")
@@ -1360,6 +1365,14 @@ def finish_attempts(args, cwd, prompt_path, output_dir, attempts, provider, peak
         status["reason"] = COPY_FINAL_REASON
         status["error"] = copy_error
         print(f"run_subagent: {copy_error}", file=sys.stderr)
+
+    if (resumed_from is not None and selected.get("provider") == PROVIDER_ZAI
+            and status["reason"] == PROVIDER_FAILURE_REASON
+            and status.get("provider_failure") == "quota_exhausted"):
+        status["next_action"] = "start_new_session"
+        status["recommended_provider"] = PROVIDER_DEEPSEEK
+        status["error"] = (f"{status['error']}；智谱续跑用量已耗尽。请主代理先核对已有改动，"
+                           "再指定 --provider deepseek 新开会话，不要传 --resume-from 恢复原会话。")
 
     write_ok, write_error = write_status(output_dir / "status.json", status)
     if not write_ok:  # status 落盘失败绝不宣告成功：打印原因并返回非零

@@ -26,4 +26,4 @@ python "$HOME\.codex\skills\codex-subagent\scripts\run_subagent.py" --mode explo
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-subagent/scripts/run_subagent.py" --mode implement --cwd /path/to/repository --prompt-file /path/to/task.txt --output-dir /path/to/evidence
 ```
 
-返修时增加 `--resume-from <上一轮证据目录>`，并为本轮指定新的、空的 `--output-dir`。`--provider zai|deepseek` 可显式指定首次使用的服务。顶层 `status.json` 和 `final.txt` 指向最终尝试，完整事件、错误日志及每次状态保存在 `attempt-1/`、`attempt-2/`。精确参数以 `python scripts/run_subagent.py --help` 为准。不要把本技能当作可隔离恶意代码的安全边界；工具事件审计属于事后检测，主代理仍需控制授权范围与工作区。
+返修时增加 `--resume-from <上一轮证据目录>`，并为本轮指定新的、空的 `--output-dir`。`--provider zai|deepseek` 可显式指定首次使用的服务。智谱旧会话在续跑时若已进入高峰，即使传入 `--peak-window off` 也会在调用模型前返回错误，不创建本轮证据；主代理应先检查旧会话的改动，再用 `--provider deepseek` 新开会话且不传旧的 `--resume-from`。智谱续跑若额度耗尽，状态中的 `next_action=start_new_session` 与 `recommended_provider=deepseek` 会明确提示同样的处理方式，不会自动跨服务续接。顶层 `status.json` 和 `final.txt` 指向最终尝试，完整事件、错误日志及每次状态保存在 `attempt-1/`、`attempt-2/`。精确参数以 `python scripts/run_subagent.py --help` 为准。不要把本技能当作可隔离恶意代码的安全边界；工具事件审计属于事后检测，主代理仍需控制授权范围与工作区。
